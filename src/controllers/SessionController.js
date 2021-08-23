@@ -1,14 +1,35 @@
 const connection = require('../database');
-const { request , response } = require('express');
+const jwt = require('jsonwebtoken');
+const { compare } = require('bcryptjs');
+const { request, response } = require('express');
+const authConfig = require('../config/auth.json');
 
 module.exports = {
-  async index(req = request, res = response) {
-    const users = await connection('users').select().from('users')
-    return res.json(users);
-  },
+  async create(req = request, res = response, next){
+    const { email, password } = req.body;
+    try{
+      const user = await connection('users').where({ email }).first()
 
-  async storage(req = request, res = response){
-    const { id } = req.body
-    return res.json({ id });
-  }
+      if(!user) throw new Error('Email de usuário não cadastrado!')
+
+      const confirmPassword = await compare(password, user.password);
+
+      if(!confirmPassword) throw new Error('Senha informada difere da cadastrada para este email');
+
+      const token = jwt.sign({ id: user.id }, authConfig.secret, {
+        expiresIn: 86400,
+      })
+
+      await connection('users').where({ email }).update({
+        token
+      })
+
+      const userToken = await connection('users').where({ email }).first()
+
+      return res.json({ userToken });
+    }catch(err){
+      err.status = 400
+      next(err)
+    }
+  } 
 }
